@@ -1,8 +1,8 @@
-import os
+from random import randint
 
 import pytest
 
-from tests.conftest import get_random_data
+from tests.conftest import xfail_mark
 
 
 @pytest.mark.xfail(reason='User is available, but status is failure', strict=True)
@@ -23,6 +23,15 @@ def test_select_by_phone_user(ws, add_user, fake_data):
     assert message['users'][0] == fake_data
 
 
+def test_select_by_phone_negative(ws, fake_data):
+    """
+    Check empty users and failed status after send `select`command with unavailable phone number
+    """
+    message = ws.select(phone=fake_data['phone'])
+    ws.assert_failure(message)
+    assert not message.get('users')
+
+
 @pytest.mark.xfail(reason='User is available, but status is failure', strict=True)
 def test_select_by_name_status(ws, add_user, fake_data):
     """
@@ -39,6 +48,15 @@ def test_select_by_name_users(ws, add_user, fake_data):
     """
     message = ws.select(name=fake_data['name'])
     assert message['users'][0] == fake_data
+
+
+def test_select_by_name_negative(ws, fake_data):
+    """
+    Check empty users and failed status after send `select`command with unavailable first name
+    """
+    message = ws.select(phone=fake_data['phone'])
+    ws.assert_failure(message)
+    assert not message.get('users')
 
 
 @pytest.mark.xfail(reason='User is available, but status is failure', strict=True)
@@ -59,32 +77,62 @@ def test_select_by_surname_users(ws, add_user, fake_data):
     assert message['users'][0] == fake_data
 
 
-@pytest.mark.parametrize('by', [
-    'name',
-    pytest.param(
-        'surname',
-        marks=pytest.mark.xfail(
-            reason='Only one user received while selecting with user last name', strict=True
-        )),
-])
+def test_select_by_surname_negative(ws, fake_data):
+    """
+    Check empty users and failed status after send `select`command with unavailable last name
+    """
+    message = ws.select(phone=fake_data['phone'])
+    ws.assert_failure(message)
+    assert not message.get('users')
+
+
+@pytest.mark.skip('Application crashes')
+def test_select_with_full_data(ws, add_user, fake_data):
+    """
+    Application should not accept `select` command with age parameter
+    """
+    message = ws.select(age=fake_data['age'])
+    ws.assert_failure(message)
+
+
+@pytest.mark.parametrize(
+    'case',
+    (
+            'name',
+            'surname',
+            'phone',
+            'request_id',
+    )
+)
+def test_select_with_invalid_data(ws, fake_data, case):
+    fake_data[case] = randint(10, 999)  # noqa
+    message = ws.add(**fake_data)
+    ws.assert_failure(message)
+    assert 'type must be string, but is number' in message.get('reason')
+
+
+@pytest.mark.parametrize(
+    'by',
+    [
+        'name',
+        pytest.param('surname', marks=xfail_mark('Only one user received while selecting with last name'))
+    ]
+)
 def test_select_multiple_users(ws, by, fake_data):
     """
     Check that multiple users can be received by `send` command
     """
     users_count = 5
     changeable_data = fake_data.copy()
-    access_method = ws.select_by_name if by == 'name' else ws.select_by_surname
 
     for i in range(users_count):
         changeable_data['phone'] = fake_data['phone'] + str(i)  # should be unique
         ws.assert_success(ws.add(**changeable_data))
 
-    users = access_method(fake_data[by])['users']  # noqa
+    users = ws.select(**{by: fake_data[by]})['users']
     assert len(users) == users_count, f'Should be created {users_count} users, but {len(users)} received'
     changeable_data = fake_data.copy()
 
     for i in range(users_count):
         changeable_data['phone'] = fake_data['phone'] + str(i)
         assert users[i] == changeable_data
-
-# todo select without adding users
