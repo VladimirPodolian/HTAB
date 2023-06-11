@@ -3,69 +3,61 @@ from __future__ import annotations
 from websockets.sync.client import ClientConnection
 import json
 
+from src.utils import payload_builder
+
 
 class Api:
 
-    def __init__(self, ws:  ClientConnection):
-        self.ws = ws
+    def __init__(self, ws: ClientConnection):
+        self.ws: ClientConnection = ws
 
-    def select(self, phone=None, name=None, surname=None, age=None, request_id='2'):
+    def add(self, name=None, surname=None, phone=None, age=None):
+        return self.request('add', locals())
+
+    def select(self, phone=None, name=None, surname=None, age=None):
+        return self.request('select', locals())
+
+    def update(self, name=None, surname=None, phone=None, age=None):
+        return self.request('update', locals())
+
+    def delete(self, name=None, surname=None, phone=None, age=None):
+        return self.request('delete', locals())
+
+    def request(self, method: str, data: dict) -> dict:
+        """
+        Default request builder
+
+        :param method: command method to be sent
+        :param data: payload data
+        :return: response dict
+        """
         payload = {
-            "method": "select",
-            **self._payload_builder(phone=phone, name=name, surname=surname, age=age, id=request_id)
+            "method": method,
+            **payload_builder(**data)
         }
 
-        return self._send(payload)._recv()
+        response = self.send(payload).recv()
 
-    def add(self, name=None, surname=None, phone=None, age=None, request_id='1'):
-        payload = {
-            "method": "add",
-            **self._payload_builder(phone=phone, name=name, surname=surname, age=age, id=request_id)
-        }
+        assert response['id'] == payload['id'],\
+            'Unexpected id in response.\nPayload: {payload}\nResponse: {response}'
 
-        return self._send(payload)._recv()
+        return response
 
-    def delete(self, name=None, surname=None, phone=None, age=None, request_id='3'):
-        payload = {
-            "method": "delete",
-            **self._payload_builder(phone=phone, name=name, surname=surname, age=age, id=request_id)
-        }
-
-        return self._send(payload)._recv()
-
-    @staticmethod
-    def assert_success(response):
-        assert response['status'] == 'success', f'The request is failed. Full response is: {response}'
-
-    @staticmethod
-    def assert_failure(response):
-        assert response['status'] == 'failure', f'The request is succeed. Full response is: {response}'
-
-    @staticmethod
-    def _payload_builder(**kwargs):
-        payload = {}
-
-        for key, value in kwargs.items():
-            if value is not None:
-                payload.update({key: value})
-
-        return payload
-
-    def _send(self, payload: dict) -> Api:
+    def send(self, payload: dict) -> Api:
         """
         A little logger added to default `send` command for better readability in test session
 
-        :param payload: request payload in dict format
+        :param payload: request payload
         :return: self
         """
         print(f'Send command with {payload=}')
         self.ws.send(json.dumps(payload))
         return self
 
-    def _recv(self) -> dict:
+    def recv(self) -> dict:
         """
         Server responded with string format, and it's difficult to work with it
-        Here is a wrapper under original `recv` method that format string into dict
+        This is a wrapper under original `recv` method that format string into dict
 
         :return: dict object with response data
         """
